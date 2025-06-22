@@ -2,6 +2,7 @@ import EventEmitter from 'events';
 import uWebSockets from 'uWebSockets.js';
 
 import { getMessageBytes, Protocol, Client, ClientPrivate, ClientState, ISendOptions, logger, debugMessage } from '@colyseus/core';
+import { Lz4Compress } from './Lz4Compress';
 
 export class uWebSocketWrapper extends EventEmitter {
   constructor(public ws: uWebSockets.WebSocket<any>) {
@@ -16,6 +17,8 @@ export enum ReadyState {
   CLOSED = 3,
 }
 
+const MinCompressionSize = 4096;
+
 export class uWebSocketClient implements Client, ClientPrivate {
   public sessionId: string;
   public state: ClientState = ClientState.JOINING;
@@ -26,6 +29,8 @@ export class uWebSocketClient implements Client, ClientPrivate {
   public _afterNextPatchQueue;
   public _reconnectionToken: string;
   public _joinedAt: number;
+
+  public msgpackLz4: boolean = false;
 
   constructor(
     public id: string,
@@ -85,7 +90,51 @@ export class uWebSocketClient implements Client, ClientPrivate {
       return;
     }
 
-    this._ref.ws.send(data, true, false);
+    if (data[0] !== Protocol.ROOM_DATA || !this.msgpackLz4 || data.length < MinCompressionSize) {
+      this._ref.ws.send(data, true, false);
+    } else {
+      this.rawLz4(data, options, cb);
+    }
+  }
+
+  private async rawLz4(data: Uint8Array | Buffer, options?: ISendOptions, cb?: (err?: Error) => void) {
+    let header = 2;
+    const prefix = data[1];
+    if (prefix >= 0x80 && prefix < 0xc0)
+    {
+      // fixstr
+      header += prefix & 0x1f;
+    }
+    else if (prefix == 0xd9)
+    {
+      header += data[2] + 1;
+    }
+    else if (prefix == 0xda)
+    {
+      header += data[2] + (data[3] << 8) + 2;
+    }
+    else if (prefix == 0xdb)
+    {
+      header += data[2] + (data[3] << 8) + (data[4] << 16) + (data[5] << 24) + 4;
+    }
+    else
+    {
+      this._ref.ws.send(data, true, false);
+      return;
+    }
+
+    const headerData = <Buffer> data.subarray(0, header);
+
+    const uncompressed = <Buffer> data.subarray(header);
+    const arrayBuffer = await Lz4Compress.compress(uncompressed);
+
+    if (this.readyState !== ReadyState.OPEN) {
+      return;
+    }
+
+    const newData = Buffer.concat([headerData, ...arrayBuffer]);
+
+    this._ref.ws.send(newData, true, false);
   }
 
   public error(code: number, message: string = '', cb?: (err?: Error) => void) {
