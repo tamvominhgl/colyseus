@@ -2,7 +2,7 @@ import EventEmitter from 'events';
 import uWebSockets from 'uWebSockets.js';
 
 import { getMessageBytes, Protocol, Client, ClientPrivate, ClientState, ISendOptions, logger, debugMessage } from '@colyseus/core';
-import { Lz4Compress } from './Lz4Compress';
+import { Lz4Compress, MinCompressionSize } from './Lz4Compress';
 
 export class uWebSocketWrapper extends EventEmitter {
   constructor(public ws: uWebSockets.WebSocket<any>) {
@@ -16,8 +16,6 @@ export enum ReadyState {
   CLOSING = 2,
   CLOSED = 3,
 }
-
-const MinCompressionSize = 4096;
 
 export class uWebSocketClient implements Client, ClientPrivate {
   public sessionId: string;

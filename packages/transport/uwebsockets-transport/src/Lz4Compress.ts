@@ -4,6 +4,9 @@ import { compress } from "lz4-napi";
 const processorCount = cpus().length;
 const concurrency = Math.max(processorCount - 1, 1);
 
+export const MinCompressionSize = 4096
+const RawBlockSize = 32 * 1024;
+
 type CompressJob = {
     data: Buffer,
     resolve: (value: Buffer) => void,
