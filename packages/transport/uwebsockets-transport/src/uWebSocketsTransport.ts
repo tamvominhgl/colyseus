@@ -173,7 +173,7 @@ export class uWebSocketsTransport extends Transport {
 
         const room = matchMaker.getLocalRoomById(roomId);
         const client = new uWebSocketClient(sessionId, wrapper);
-        if (searchParams.msgpack === 'lz4') {
+        if (searchParams['msgpack-lz4'] === 'supported') {
             client.msgpackLz4 = true;
         }
 
