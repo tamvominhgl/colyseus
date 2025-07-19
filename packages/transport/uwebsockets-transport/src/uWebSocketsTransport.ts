@@ -6,7 +6,11 @@ import expressify, { Application } from "uwebsockets-express";
 import { AuthContext, HttpServerMock, ErrorCode, matchMaker, getBearerToken, Transport, debugAndPrintError, spliceOne } from '@colyseus/core';
 import { uWebSocketClient, uWebSocketWrapper } from './uWebSocketClient.js';
 
-export type TransportOptions = Omit<uWebSockets.WebSocketBehavior<any>, "upgrade" | "open" | "pong" | "close" | "message">;
+type uWebSocketsOptions = Omit<uWebSockets.WebSocketBehavior<any>, "upgrade" | "open" | "pong" | "close" | "message">;
+export type TransportOptions = uWebSocketsOptions & {
+  enableMsgpackLz4?: boolean,
+  minSizeToCompress?: number,
+};
 
 type RawWebSocketClient = uWebSockets.WebSocket<any> & {
   url: string,
@@ -23,6 +27,8 @@ export class uWebSocketsTransport extends Transport {
 
     private _listeningSocket: any;
     private _originalRawSend: typeof uWebSocketClient.prototype.raw | null = null;
+
+    private enableMsgpackLz4: boolean = false;
 
     constructor(options: TransportOptions = {}, appOptions: uWebSockets.AppOptions = {}) {
         super();
@@ -48,6 +54,17 @@ export class uWebSocketsTransport extends Transport {
         if (options.sendPingsAutomatically === undefined) {
             options.sendPingsAutomatically = true;
         }
+
+        if (options.enableMsgpackLz4 === undefined) {
+            options.enableMsgpackLz4 = false;
+        }
+
+        if (options.minSizeToCompress === undefined) {
+            options.minSizeToCompress = 4096;
+        }
+
+        this.enableMsgpackLz4 = options.enableMsgpackLz4;
+        uWebSocketClient.MinSizeToCompress = options.minSizeToCompress;
 
         // https://github.com/colyseus/colyseus/issues/458
         // Adding a mock object for Transport.server
@@ -173,7 +190,7 @@ export class uWebSocketsTransport extends Transport {
 
         const room = matchMaker.getLocalRoomById(roomId);
         const client = new uWebSocketClient(sessionId, wrapper);
-        if (searchParams['msgpack-lz4'] === 'supported') {
+        if (this.enableMsgpackLz4 && searchParams['msgpack-lz4'] === 'supported') {
             client.msgpackLz4 = true;
         }
 
